@@ -251,9 +251,9 @@ var (
 		MessageRMC: map[byte]string{
 			LangEnglish: "" +
 				"You are banned from public matches.\n" +
-				"Reason: %s" +
+				"Reason: %[3]s\n" +
 				"Error Code: %[1]d\n" +
-				"Support Info: NG%08[2]x\n",
+				"Support Info: NG%08[2]x",
 		},
 	}
 
@@ -262,9 +262,9 @@ var (
 		MessageRMC: map[byte]string{
 			LangEnglish: "" +
 				"You have been banned from public matches.\n" +
-				"Reason: %s" +
+				"Reason: %[3]s\n" +
 				"Error Code: %[1]d\n" +
-				"Support Info: NG%08[2]x\n",
+				"Support Info: NG%08[2]x",
 		},
 	}
 
@@ -307,7 +307,7 @@ var (
 		MessageRMC: map[byte]string{
 			LangEnglish: "" +
 				"You have been kicked from WiiLink WFC.\n" +
-				"Reason: %s" +
+				"Reason: %[3]s\n" +
 				"Error Code: %[1]d\n" +
 				"Support Info: NG%08[2]x\n",
 		},
@@ -383,21 +383,7 @@ var (
 				"Código de error: %[1]d",
 		},
 	}
-
-	WWFCMsgTooManyFramesDropped = WWFCErrorMessage{
-		ErrorCode: 22010,
-		MessageRMC: map[byte]string{
-			LangEnglish: "" +
-				"Tu juego está perdiendo demasiados fotogramas.\n" +
-				"Elimina cualquier modificación que pueda\n" +
-				"estar causando problemas de rendimiento para\n" +
-				"evitar ser expulsado de PiporGames Network® WFC.\n" +
-				"\n" +
-				"Código de error: %[1]d",
-		},
-	}
 )
-
 
 func (err GPError) GetMessage() string {
 	command := common.GameSpyCommand{
@@ -467,12 +453,11 @@ func (err GPError) GetMessageTranslate(gameName string, region byte, lang byte, 
 				errMsg = fmt.Sprintf(errMsg, wwfcMessage.ErrorCode, ngid, reason)
 				errMsgUTF16 := utf16.Encode([]rune(errMsg))
 				errMsgByteArray := common.UTF16ToByteArray(errMsgUTF16)
-				command.OtherValues["wwfc_errmsg"] = common.Base64DwcEncoding.EncodeToString(errMsgByteArray)
+				command.OtherValues["wl:errmsg"] = common.Base64DwcEncoding.EncodeToString(errMsgByteArray)
 			}
-
-			command.OtherValues["wwfc_err"] = strconv.Itoa(wwfcMessage.ErrorCode)
-
 		}
+
+		command.OtherValues["wl:err"] = strconv.Itoa(err.WWFCMessage.ErrorCode)
 	}
 
 	return common.CreateGameSpyMessage(command)
