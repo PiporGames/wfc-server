@@ -212,7 +212,7 @@ func renderMii(base string) ([]byte, error) {
 
 func searchAnyPlayerGhost(playername string) (int, int, error) {
 	// extract data from SQL DB
-	playerRows, err := pool.Query(ctx, "SELECT courseid, score FROM mario_kart_wii_sake WHERE pid = (SELECT profile_id FROM users WHERE last_ingamesn = $1) LIMIT 1", playername)
+	playerRows, err := pool.Query(ctx, "SELECT courseid, score FROM mario_kart_wii_sake WHERE pid = (SELECT profile_id FROM users WHERE last_ingamesn = $1 AND gsbrcd LIKE 'RMC%' ORDER BY profile_id ASC LIMIT 1)", playername)
 	if err != nil {
 		return 0, 0, errors.New("Error querying ghosts (" + err.Error() + ")")
 	}
