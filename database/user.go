@@ -164,15 +164,6 @@ func UnbanUser(pool *pgxpool.Pool, ctx context.Context, profileId uint32) bool {
 	return err == nil
 }
 
-func GetUserIP(pool *pgxpool.Pool, ctx context.Context, profileId uint32) string {
-	var ip string
-	err := pool.QueryRow(ctx, GetUserLastIPAddress, profileId).Scan(&ip)
-	if err != nil {
-		return "Unknown"
-	}
-	return ip
-}
-
 func GetMKWFriendInfo(pool *pgxpool.Pool, ctx context.Context, profileId uint32) string {
 	var info string
 	err := pool.QueryRow(ctx, GetMKWFriendInfoQuery, profileId).Scan(&info)
