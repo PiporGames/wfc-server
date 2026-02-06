@@ -2,7 +2,7 @@
 WiiLink Wi-Fi Connection aims to be an open source server replacement for Nintendo Wi-Fi Connection. Currently, a work in progress.
 
 ## Current Support
-- Matchmaking (No server sorting yet)
+- Matchmaking
 - Adding Friends
 - MKWii: Downloading and uploading Ghosts
 - MKWii: Restored/fixed Worldwide Ghost Race mode functionality for small databases

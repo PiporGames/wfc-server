@@ -3,6 +3,8 @@ package common
 import (
 	"encoding/xml"
 	"os"
+
+	"github.com/linkdata/deadlock"
 )
 
 type Config struct {
@@ -11,12 +13,13 @@ type Config struct {
 	DatabaseAddress string `xml:"databaseAddress"`
 	DatabaseName    string `xml:"databaseName"`
 
-	DefaultAddress  string  `xml:"address"`
-	GameSpyAddress  *string `xml:"gsAddress,omitempty"`
-	NASAddress      *string `xml:"nasAddress,omitempty"`
-	NASPort         string  `xml:"nasPort"`
-	NASAddressHTTPS *string `xml:"nasAddressHttps,omitempty"`
-	NASPortHTTPS    string  `xml:"nasPortHttps"`
+	DefaultAddress       string  `xml:"address"`
+	GameSpyAddress       *string `xml:"gsAddress,omitempty"`
+	NASAddress           *string `xml:"nasAddress,omitempty"`
+	NASPort              string  `xml:"nasPort"`
+	NASAddressHTTPS      *string `xml:"nasAddressHttps,omitempty"`
+	NASPortHTTPS         string  `xml:"nasPortHttps"`
+	PayloadServerAddress string  `xml:"payloadServerAddress"`
 
 	FrontendAddress        string `xml:"frontendAddress"`
 	FrontendBackendAddress string `xml:"frontendBackendAddress"`
@@ -47,10 +50,16 @@ type Config struct {
 	ServerName string `xml:"serverName,omitempty"`
 }
 
-var config Config
-var configLoaded bool
+var (
+	config       Config
+	configLoaded bool
+	cmutex       = deadlock.Mutex{}
+)
 
 func GetConfig() Config {
+	cmutex.Lock()
+	defer cmutex.Unlock()
+
 	if configLoaded {
 		return config
 	}
@@ -126,6 +135,8 @@ func GetConfig() Config {
 	} else if config.AllowMultipleDeviceIDs != "SameIPAddress" {
 		config.AllowMultipleDeviceIDs = "never"
 	}
+
+	configLoaded = true
 
 	return config
 }
