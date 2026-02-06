@@ -401,6 +401,7 @@ func checkPayloadVersion(payloadVer string) bool {
 	// beta := verInt & 4095
 
 	for _, v := range MinimumPayloadVersions {
+		fmt.Printf("Checking payload version: expected major=%d, minor=%d vs found major=%d, minor=%d\n", v.major, v.minor, major, minor)
 		if v.major == major && minor >= v.minor {
 			return true
 		}
@@ -415,9 +416,12 @@ func (g *GameSpySession) verifyExLoginInfo(command common.GameSpyCommand, authTo
 	deviceId = 0
 
 	if !payloadVerExists || !checkPayloadVersion(payloadVer) {
+		verInt, _ := strconv.ParseInt(payloadVer, 0, 32)
+		major := byte(verInt>>24) & 255
+		minor := int(verInt>>12) & 4095
 		g.replyError(GPError{
 			ErrorCode:   ErrLogin.ErrorCode,
-			ErrorString: "The payload version is invalid.",
+			ErrorString: fmt.Sprintf("The payload version is invalid. Expected major=%d, minor=%d but found major=%d, minor=%d", MinimumPayloadVersions[0].major, MinimumPayloadVersions[0].minor, major, minor),
 			Fatal:       true,
 			WWFCMessage: WWFCMsgPayloadInvalid,
 		})
