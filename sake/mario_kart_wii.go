@@ -2,11 +2,13 @@ package sake
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"wwfc/common"
@@ -17,11 +19,11 @@ import (
 )
 
 type playerInfo struct {
-	MiiData      common.Mii // 0x00
-	ControllerId byte       // 0x4C
-	Unknown      byte       // 0x4D
-	StateCode    byte       // 0x4E
-	CountryCode  byte       // 0x4F
+	MiiData      common.RawMii // 0x00
+	ControllerId byte          // 0x4C
+	Unknown      byte          // 0x4D
+	StateCode    byte          // 0x4E
+	CountryCode  byte          // 0x4F
 }
 
 const (
@@ -29,6 +31,150 @@ const (
 
 	rkgdFileName = "ghost.bin"
 )
+
+var (
+	ghostDataFilterRegex = regexp.MustCompile(`^course = ([1-9]\d?|0) and gameid = 1687 and time < ([1-9][0-9]{0,5})$`)
+)
+
+func getMarioKartWiiGhostDataRecord(moduleName string, request StorageRequestCommon) ([]database.SakeRecord, bool) {
+	if request.Sort != "time desc" {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid sort string:", aurora.Cyan(request.Sort))
+		return []database.SakeRecord{}, false
+	}
+
+	if request.Offset != 0 {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid offset value:", aurora.Cyan(request.Offset))
+		return []database.SakeRecord{}, false
+	}
+
+	if request.Max != 1 {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid number of records to return:", aurora.Cyan(request.Max))
+		return []database.SakeRecord{}, false
+	}
+
+	if request.Surrounding != 0 {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid number of surrounding records to return:", aurora.Cyan(request.Surrounding))
+		return []database.SakeRecord{}, false
+	}
+
+	if len(request.OwnerIDs.Int) != 0 {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid owner id array:", aurora.Cyan(request.OwnerIDs))
+		return []database.SakeRecord{}, false
+	}
+
+	if request.CacheFlag {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid cache value:", aurora.Cyan(request.CacheFlag))
+		return []database.SakeRecord{}, false
+	}
+
+	match := ghostDataFilterRegex.FindStringSubmatch(request.Filter)
+	if match == nil {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid filter string:", aurora.Cyan(request.Filter))
+		return []database.SakeRecord{}, false
+	}
+
+	courseIdInt, _ := strconv.Atoi(match[1])
+	courseId := common.MarioKartWiiCourseId(courseIdInt)
+	if !courseId.IsValid() {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid course ID:", aurora.Cyan(match[1]))
+		return []database.SakeRecord{}, false
+	}
+
+	time, _ := strconv.Atoi(match[2])
+	if time >= 360000 /* 6 minutes */ {
+		logging.Error(moduleName, "mariokartwii/GhostData: Invalid time:", aurora.Cyan(match[2]))
+		return []database.SakeRecord{}, false
+	}
+
+	fileId, err := db.GetMarioKartWiiGhostData(courseId, time)
+	if err != nil {
+		logging.Error(moduleName, "mariokartwii/GhostData: Failed to get the ghost data from the database:", err)
+		return []database.SakeRecord{}, false
+	}
+
+	return []database.SakeRecord{{
+		GameId:   1687,
+		TableId:  "GhostData",
+		RecordId: 0,
+		OwnerId:  0,
+		Fields: map[string]database.SakeField{
+			"fileid": {
+				Type:  database.SakeFieldTypeInt,
+				Value: strconv.FormatInt(int64(int32(fileId)), 10),
+			},
+		},
+	}}, true
+}
+
+func getMarioKartWiiStoredGhostDataRecord(moduleName string, request StorageRequestCommon) ([]database.SakeRecord, bool) {
+	if request.Sort != "time" {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Invalid sort string:", aurora.Cyan(request.Sort))
+		return []database.SakeRecord{}, false
+	}
+
+	if request.Offset != 0 {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Invalid offset value:", aurora.Cyan(request.Offset))
+		return []database.SakeRecord{}, false
+	}
+
+	if request.Max != 1 {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Invalid number of records to return:", aurora.Cyan(request.Max))
+		return []database.SakeRecord{}, false
+	}
+
+	if request.Surrounding != 0 {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Invalid number of surrounding records to return:", aurora.Cyan(request.Surrounding))
+		return []database.SakeRecord{}, false
+	}
+
+	if len(request.OwnerIDs.Int) != 0 {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Invalid owner id array:", aurora.Cyan(request.OwnerIDs))
+		return []database.SakeRecord{}, false
+	}
+
+	if request.CacheFlag {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Invalid cache value:", aurora.Cyan(request.CacheFlag))
+		return []database.SakeRecord{}, false
+	}
+
+	match := regexp.MustCompile(`^course = ([1-9]\d?|0) and gameid = 1687(?: and region = ([1-7]))?$`).FindStringSubmatch(request.Filter)
+	if match == nil {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Invalid filter string:", aurora.Cyan(request.Filter))
+		return []database.SakeRecord{}, false
+	}
+
+	courseIdInt, _ := strconv.Atoi(match[1])
+	courseId := common.MarioKartWiiCourseId(courseIdInt)
+	if !courseId.IsValid() {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Invalid course ID:", aurora.Cyan(match[1]))
+		return []database.SakeRecord{}, false
+	}
+
+	var regionId common.MarioKartWiiLeaderboardRegionId
+	if regionIdExists := match[2] != ""; regionIdExists {
+		regionIdInt, _ := strconv.Atoi(match[2])
+		regionId = common.MarioKartWiiLeaderboardRegionId(regionIdInt)
+	} else {
+		regionId = common.Worldwide
+	}
+
+	pid, fileId, err := db.GetMarioKartWiiStoredGhostData(regionId, courseId)
+	if err != nil {
+		logging.Error(moduleName, "mariokartwii/StoredGhostData: Failed to get the stored ghost data from the database:", err)
+		return []database.SakeRecord{}, false
+	}
+
+	return []database.SakeRecord{{
+		GameId:   1687,
+		TableId:  "StoredGhostData",
+		RecordId: 0,
+		OwnerId:  int32(pid),
+		Fields: map[string]database.SakeField{
+			"profile": {Type: database.SakeFieldTypeInt, Value: strconv.FormatInt(int64(int32(pid)), 10)},
+			"fileid":  {Type: database.SakeFieldTypeInt, Value: strconv.FormatInt(int64(int32(fileId)), 10)},
+		},
+	}}, true
+}
 
 func handleMarioKartWiiFileDownloadRequest(moduleName string, responseWriter http.ResponseWriter, request *http.Request) {
 	if strings.HasSuffix(request.URL.Path, "ghostdownload.aspx") {
@@ -55,7 +201,7 @@ func handleMarioKartWiiFileDownloadRequest(moduleName string, responseWriter htt
 		return
 	}
 
-	file, err := database.GetMarioKartWiiFile(pool, ctx, fileId)
+	file, err := db.GetMarioKartWiiFile(fileId)
 	if err != nil {
 		logging.Error(moduleName, "Failed to get the file from the database:", err)
 		responseWriter.Header().Set(SakeFileResultHeader, strconv.Itoa(SakeFileResultServerError))
@@ -124,7 +270,7 @@ func handleMarioKartWiiGhostDownloadRequest(moduleName string, responseWriter ht
 	// ***********************************************************************************************************
 
 	// try vanilla behaviour first
-	ghost, err := database.GetMarioKartWiiGhostFile(pool, ctx, courseId, time, pid)
+	ghost, err := db.GetMarioKartWiiGhostFile(courseId, time, pid)
 	if err != nil {
 		logging.Error(moduleName, "Failed to get a ghost file from the database:", err)
 		logging.Warn(moduleName, "courseId request failed, testing with random courseIds and incremental times.")
@@ -159,7 +305,7 @@ func handleMarioKartWiiGhostDownloadRequest(moduleName string, responseWriter ht
 				}
 
 				// If courseId is good, download.
-				ghost, err = database.GetMarioKartWiiGhostFile(pool, ctx, courseIdran, time, pid)
+				ghost, err = db.GetMarioKartWiiGhostFile(courseIdran, time, pid)
 				if err != nil || len(ghost) <= 0 {
 					continue // ghost cannot be found or invalid, continue.
 				}
@@ -191,7 +337,11 @@ func handleMarioKartWiiGhostDownloadRequest(moduleName string, responseWriter ht
 
 	}
 
-	responseBody := append(downloadedGhostFileHeader(), ghost...)
+	ghostData := common.RKGhostData(ghost)
+	ghostData.SetMiiData(ghostData.GetMiiData().ClearMiiInfo())
+	ghostData.RecalculateCRC()
+
+	responseBody := append(downloadedGhostFileHeader(), []byte(ghostData)...)
 
 	responseWriter.Header().Set(SakeFileResultHeader, strconv.Itoa(SakeFileResultSuccess))
 	responseWriter.Header().Set("Content-Length", strconv.Itoa(len(responseBody)))
@@ -255,13 +405,13 @@ func handleMarioKartWiiGhostUploadRequest(moduleName string, responseWriter http
 		return
 	}
 
-	if !isPlayerInfoValid(playerInfo) {
+	fixedPlayerInfo, ok := isPlayerInfoValid(playerInfo)
+	if !ok {
 		logging.Error(moduleName, "Invalid player info:", aurora.Cyan(playerInfo))
 		responseWriter.Header().Set(SakeFileResultHeader, strconv.Itoa(SakeFileResultMissingParameter))
 		return
 	}
-	// Mario Kart Wii expects player information to be in this form
-	playerInfo, _ = common.GameSpyBase64ToBase64(playerInfo, common.GameSpyBase64EncodingURLSafe)
+	playerInfo = fixedPlayerInfo
 
 	// The multipart boundary utilized by GameSpy does not conform to RFC 2045. To ensure compliance,
 	// we need to surround it with double quotation marks.
@@ -302,17 +452,21 @@ func handleMarioKartWiiGhostUploadRequest(moduleName string, responseWriter http
 		return
 	}
 
-	if !common.RKGhostData(ghostFile).IsRKGDFileValid(moduleName, courseId, score) {
+	ghostData := common.RKGhostData(ghostFile)
+	if !ghostData.IsRKGDFileValid(moduleName, courseId, score) {
 		logging.Error(moduleName, "Received an invalid ghost file")
 		responseWriter.Header().Set(SakeFileResultHeader, strconv.Itoa(SakeFileResultFileTooLarge))
 		return
 	}
 
+	ghostData.SetMiiData(ghostData.GetMiiData().ClearMiiInfo())
+	ghostData.RecalculateCRC()
+
 	if isContest {
 		ghostFile = nil
 	}
 
-	err = database.InsertMarioKartWiiGhostFile(pool, ctx, regionId, courseId, score, pid, playerInfo, ghostFile)
+	err = db.InsertMarioKartWiiGhostFile(regionId, courseId, score, pid, playerInfo, []byte(ghostData))
 	if err != nil {
 		logging.Error(moduleName, "Failed to insert the ghost file into the database:", err)
 		responseWriter.Header().Set(SakeFileResultHeader, strconv.Itoa(SakeFileResultServerError))
@@ -330,30 +484,72 @@ func downloadedGhostFileHeader() []byte {
 	return downloadedGhostFileHeader[:]
 }
 
-func isPlayerInfoValid(playerInfoString string) bool {
-	playerInfoByteArray, err := common.DecodeGameSpyBase64(playerInfoString, common.GameSpyBase64EncodingURLSafe)
+// isPlayerInfoValid checks if the player info (base64.URLEncoding) string is valid, and if so, returns a "fixed" version of it with base64.StdEncoding
+func isPlayerInfoValid(playerInfoString string) (string, bool) {
+	playerInfoByteArray, err := base64.URLEncoding.DecodeString(playerInfoString)
 	if err != nil {
-		return false
+		return "", false
 	}
 
 	if len(playerInfoByteArray) != playerInfoSize {
-		return false
+		return "", false
 	}
 
 	var playerInfo playerInfo
 	reader := bytes.NewReader(playerInfoByteArray)
 	err = binary.Read(reader, binary.BigEndian, &playerInfo)
 	if err != nil {
-		return false
+		return "", false
 	}
 
-	if playerInfo.MiiData.RFLCalculateCRC() != 0x0000 {
-		return false
+	if playerInfo.MiiData.CalculateMiiCRC() != 0x0000 {
+		return "", false
 	}
 
 	controllerId := common.MarioKartWiiControllerId(playerInfo.ControllerId)
 
-	return controllerId.IsValid()
+	if !controllerId.IsValid() {
+		return "", false
+	}
+
+	playerInfo.MiiData.ClearMiiInfo()
+
+	fixedPlayerInfoByteArray := new(bytes.Buffer)
+	err = binary.Write(fixedPlayerInfoByteArray, binary.BigEndian, playerInfo)
+	if err != nil {
+		return "", false
+	}
+
+	fixedPlayerInfoString := base64.StdEncoding.EncodeToString(fixedPlayerInfoByteArray.Bytes())
+	return fixedPlayerInfoString, true
+}
+
+func filterMarioKartWiiFriendInfo(value string, isOwner bool) (string, Result) {
+	// Clear personal info from the Mii data before sending to the client. This
+	// cannot be done before inserting into the database because the client
+	// expects the server to return the exact copy of what it has previously updated.
+	if isOwner {
+		return value, ResultSuccess
+	}
+
+	binaryData, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		// Shouldn't happen after validation
+		panic(err)
+	}
+	// Only change if the Mii checksum is valid
+	if len(binaryData) < 0x4C {
+		return value, ResultSuccess
+	}
+
+	mii := common.RawMiiFromBytes(binaryData)
+	if mii.CalculateMiiCRC() != 0 {
+		return value, ResultSuccess
+	}
+
+	mii = mii.ClearMiiInfo()
+	binaryData = append(mii.Data[:], binaryData[len(mii.Data):]...)
+	return base64.StdEncoding.EncodeToString(binaryData), ResultSuccess
 }
 
 func getMultipartBoundary(contentType string) string {

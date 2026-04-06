@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/xml"
 	"os"
+	"wwfc/logging"
 
 	"github.com/linkdata/deadlock"
 )
@@ -48,6 +49,13 @@ type Config struct {
 	AllowConnectWithoutDeviceID bool   `xml:"allowConnectWithoutDeviceID"`
 
 	ServerName string `xml:"serverName,omitempty"`
+
+	EventReporting EventReportingConfig `xml:"eventReporting"`
+}
+
+type EventReportingConfig struct {
+	LogToDatabase bool                    `xml:"logToDatabase"`
+	Webhooks      []logging.WebhookConfig `xml:"discord>webhook"`
 }
 
 var (
@@ -139,4 +147,10 @@ func GetConfig() Config {
 	configLoaded = true
 
 	return config
+}
+
+func (c Config) RegisterWebhooks() {
+	for _, webhook := range c.EventReporting.Webhooks {
+		webhook.RegisterWebhook()
+	}
 }

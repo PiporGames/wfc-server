@@ -1,10 +1,9 @@
 package database
 
 import (
-	"context"
 	"wwfc/common"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v4"
 )
 
 type MarioKartWiiTopTenRanking struct {
@@ -55,9 +54,9 @@ const (
 		"SET regionid = EXCLUDED.regionid, score = EXCLUDED.score, playerinfo = EXCLUDED.playerinfo, ghost = EXCLUDED.ghost, upload_time = CURRENT_TIMESTAMP"
 )
 
-func GetMarioKartWiiTopTenRankings(pool *pgxpool.Pool, ctx context.Context, regionId common.MarioKartWiiLeaderboardRegionId,
+func (c *Connection) GetMarioKartWiiTopTenRankings(regionId common.MarioKartWiiLeaderboardRegionId,
 	courseId common.MarioKartWiiCourseId) ([]MarioKartWiiTopTenRanking, error) {
-	rows, err := pool.Query(ctx, getTopTenRankingsQuery, regionId, courseId)
+	rows, err := c.pool.Query(c.ctx, getTopTenRankingsQuery, regionId, courseId)
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +79,8 @@ func GetMarioKartWiiTopTenRankings(pool *pgxpool.Pool, ctx context.Context, regi
 	return topTenRankings, nil
 }
 
-func GetMarioKartWiiGhostData(pool *pgxpool.Pool, ctx context.Context, courseId common.MarioKartWiiCourseId, time int) (int, error) {
-	row := pool.QueryRow(ctx, getGhostDataQuery, courseId, time)
+func (c *Connection) GetMarioKartWiiGhostData(courseId common.MarioKartWiiCourseId, time int) (int, error) {
+	row := c.pool.QueryRow(c.ctx, getGhostDataQuery, courseId, time)
 
 	var fileId int
 	if err := row.Scan(&fileId); err != nil {
@@ -91,9 +90,9 @@ func GetMarioKartWiiGhostData(pool *pgxpool.Pool, ctx context.Context, courseId 
 	return fileId, nil
 }
 
-func GetMarioKartWiiStoredGhostData(pool *pgxpool.Pool, ctx context.Context, regionId common.MarioKartWiiLeaderboardRegionId,
+func (c *Connection) GetMarioKartWiiStoredGhostData(regionId common.MarioKartWiiLeaderboardRegionId,
 	courseId common.MarioKartWiiCourseId) (int, int, error) {
-	row := pool.QueryRow(ctx, getStoredGhostDataQuery, regionId, courseId)
+	row := c.pool.QueryRow(c.ctx, getStoredGhostDataQuery, regionId, courseId)
 
 	var pid int
 	var fileId int
@@ -104,8 +103,8 @@ func GetMarioKartWiiStoredGhostData(pool *pgxpool.Pool, ctx context.Context, reg
 	return pid, fileId, nil
 }
 
-func GetMarioKartWiiFile(pool *pgxpool.Pool, ctx context.Context, fileId int) ([]byte, error) {
-	row := pool.QueryRow(ctx, getFileQuery, fileId)
+func (c *Connection) GetMarioKartWiiFile(fileId int) ([]byte, error) {
+	row := c.pool.QueryRow(c.ctx, getFileQuery, fileId)
 
 	var file []byte
 	if err := row.Scan(&file); err != nil {
@@ -115,9 +114,8 @@ func GetMarioKartWiiFile(pool *pgxpool.Pool, ctx context.Context, fileId int) ([
 	return file, nil
 }
 
-func GetMarioKartWiiGhostFile(pool *pgxpool.Pool, ctx context.Context, courseId common.MarioKartWiiCourseId,
-	time int, pid int) ([]byte, error) {
-	row := pool.QueryRow(ctx, getGhostFileQuery, courseId, time, pid)
+func (c *Connection) GetMarioKartWiiGhostFile(courseId common.MarioKartWiiCourseId, time int, pid int) ([]byte, error) {
+	row := c.pool.QueryRow(c.ctx, getGhostFileQuery, courseId, time, pid)
 
 	var ghost []byte
 	if err := row.Scan(&ghost); err != nil {
@@ -127,9 +125,56 @@ func GetMarioKartWiiGhostFile(pool *pgxpool.Pool, ctx context.Context, courseId 
 	return ghost, nil
 }
 
-func InsertMarioKartWiiGhostFile(pool *pgxpool.Pool, ctx context.Context, regionId common.MarioKartWiiLeaderboardRegionId,
+func (c *Connection) InsertMarioKartWiiGhostFile(regionId common.MarioKartWiiLeaderboardRegionId,
 	courseId common.MarioKartWiiCourseId, score int, pid int, playerInfo string, ghost []byte) error {
-	_, err := pool.Exec(ctx, insertGhostFileStatement, regionId, courseId, score, pid, playerInfo, ghost)
+	_, err := c.pool.Exec(c.ctx, insertGhostFileStatement, regionId, courseId, score, pid, playerInfo, ghost)
 
 	return err
+}
+
+// Mario Kart Wii friend info functions for API compatibility
+
+func (c *Connection) GetMKWFriendInfo(profileId uint32) string {
+	records, err := c.GetSakeRecords(1687, []int32{int32(profileId)}, "FriendInfo", nil, []string{"info"}, "")
+	if err != nil || len(records) == 0 {
+		return ""
+	}
+
+	infoField, ok := records[0].Fields["info"]
+	if !ok {
+		return ""
+	}
+
+	return infoField.Value
+}
+
+func (c *Connection) UpdateMKWFriendInfo(profileId uint32, info string) {
+	records, err := c.GetSakeRecords(1687, []int32{int32(profileId)}, "FriendInfo", nil, []string{"info"}, "")
+	if err == pgx.ErrNoRows || (err == nil && len(records) == 0) {
+		// No existing record, insert new one
+		record := SakeRecord{
+			GameId:  1687,
+			TableId: "FriendInfo",
+			OwnerId: int32(profileId),
+			Fields: map[string]SakeField{
+				"info": {
+					Type:  SakeFieldTypeBinaryData,
+					Value: info,
+				},
+			},
+		}
+		_, err = c.InsertSakeRecord(record)
+	} else if err == nil {
+		// Update existing record
+		records[0].Fields["info"] = SakeField{
+			Type:  SakeFieldTypeBinaryData,
+			Value: info,
+		}
+		err = c.UpdateSakeRecord(records[0], int32(profileId))
+
+	}
+
+	if err != nil {
+		panic(err)
+	}
 }

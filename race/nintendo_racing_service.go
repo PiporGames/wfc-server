@@ -1,13 +1,13 @@
 package race
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"wwfc/common"
-	"wwfc/database"
 	"wwfc/logging"
 
 	"github.com/logrusorgru/aurora/v3"
@@ -143,7 +143,7 @@ func handleGetTopTenRankingsRequest(moduleName string, responseWriter http.Respo
 		return
 	}
 
-	topTenRankings, err := database.GetMarioKartWiiTopTenRankings(pool, ctx, regionId, courseId)
+	topTenRankings, err := db.GetMarioKartWiiTopTenRankings(regionId, courseId)
 	if err != nil {
 		logging.Error(moduleName, "Failed to get the Top 10 rankings:", err)
 		writeErrorResponse(raceServiceResultDatabaseError, responseWriter)
@@ -153,11 +153,19 @@ func handleGetTopTenRankingsRequest(moduleName string, responseWriter http.Respo
 	numberOfRankings := len(topTenRankings)
 	data := make([]rankingsResponseData, 0, numberOfRankings)
 	for i, topTenRanking := range topTenRankings {
+		// Filter player info just in case
+		playerInfo, err := base64.StdEncoding.DecodeString(topTenRanking.PlayerInfo)
+		if err != nil {
+			panic(err)
+		}
+		miiData := common.RawMiiFromBytes(playerInfo).ClearMiiInfo().Data
+		playerInfo = append(miiData[:], playerInfo[len(miiData):]...)
+
 		rankingData := rankingsResponseRankingData{
 			OwnerID:  topTenRanking.PID,
 			Rank:     i + 1,
 			Time:     topTenRanking.Score,
-			UserData: topTenRanking.PlayerInfo,
+			UserData: base64.StdEncoding.EncodeToString(playerInfo),
 		}
 
 		responseData := rankingsResponseData{

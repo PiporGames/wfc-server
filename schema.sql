@@ -33,8 +33,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     email character varying NOT NULL,
     unique_nick character varying NOT NULL,
     firstname character varying,
-    lastname character varying DEFAULT ''::character varying,
-    mariokartwii_friend_info character varying
+    lastname character varying DEFAULT ''::character varying
 );
 
 
@@ -62,6 +61,22 @@ BEGIN
 END $$;
 
 ALTER TABLE public.users OWNER TO wiilink;
+
+--
+-- Name: sake_records; Type: TABLE; Schema: public; Owner: wiilink
+--
+
+CREATE TABLE IF NOT EXISTS public.sake_records (
+    game_id integer NOT NULL,
+    table_id character varying NOT NULL,
+    record_id integer NOT NULL DEFAULT (random() * 2147483647)::integer,
+    owner_id integer NOT NULL,
+    fields jsonb NOT NULL CHECK (jsonb_typeof(fields) = 'object' AND jsonb_array_length(jsonb_path_query_array(fields, '$.keyvalue().key')) <= 64),
+    create_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    update_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT one_sake_record_constraint UNIQUE (game_id, table_id, record_id)
+);
 
 --
 -- Name: mario_kart_wii_sake; Type: TABLE; Schema: public; Owner: wiilink
@@ -134,6 +149,16 @@ ALTER TABLE ONLY public.users ALTER COLUMN profile_id SET DEFAULT nextval('publi
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (profile_id);
 
+--
+-- Name: events; Type: TABLE; Schema: public; Owner: wiilink
+--
+
+CREATE TABLE IF NOT EXISTS public.events (
+    id serial PRIMARY KEY,
+    event_type character varying NOT NULL,
+    event_data jsonb NOT NULL,
+    event_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
 
 --
 -- PostgreSQL database dump complete

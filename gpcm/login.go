@@ -226,6 +226,18 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 
 	g.LoginInfoSet = true
 
+	logging.Event(
+		"received_login_info",
+		map[string]any{
+			"user_id":      userId,
+			"game_name":    g.GameName,
+			"wii_number":   cfc,
+			"in_game_name": ingamesn,
+			"unit_code":    unitcd,
+			"ip_address":   g.RemoteAddr,
+		},
+	)
+
 	expectedUnitCode := common.GetExpectedUnitCode(g.GameName)
 	if (g.UnitCode != UnitCodeDS && g.UnitCode != UnitCodeWii) || (g.UnitCode != expectedUnitCode && expectedUnitCode != UnitCodeDSAndWii) {
 		logging.Error(g.ModuleName, "Incorrect unit code specified:", aurora.Cyan(unitcd))
@@ -292,6 +304,19 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 
 	if !g.performLoginWithDatabase(userId, gsbrcd, cmdProfileId, defaultKey, deviceId, deviceAuth) {
 		return
+	}
+
+	if g.User.Created {
+		logging.Event(
+			"profile_created",
+			map[string]any{
+				"user_id":    g.User.UserId,
+				"profile_id": g.User.ProfileId,
+				"game_name":  g.GameName,
+				"ip_address": g.RemoteAddr,
+			},
+		)
+
 	}
 
 	g.ModuleName = "GPCM:" + strconv.FormatInt(int64(g.User.ProfileId), 10) + "*"
@@ -369,6 +394,16 @@ func (g *GameSpySession) login(command common.GameSpyCommand) {
 	})
 
 	common.SendPacket(ServerName, g.ConnIndex, []byte(payload))
+
+	logging.Event(
+		"logged_in",
+		map[string]any{
+			"profile_id":   g.User.ProfileId,
+			"game_name":    g.GameName,
+			"in_game_name": g.InGameName,
+			"ip_address":   g.RemoteAddr,
+		},
+	)
 }
 
 func (g *GameSpySession) exLogin(command common.GameSpyCommand) {
@@ -450,6 +485,14 @@ func (g *GameSpySession) verifyExLoginInfo(command common.GameSpyCommand, authTo
 	}
 
 	g.DeviceId = deviceId
+	logging.Event(
+		"device_authenticated",
+		map[string]any{
+			"profile_id":      g.User.ProfileId,
+			"ng_device_id":    g.DeviceId,
+			"payload_version": payloadVer,
+		},
+	)
 	return
 }
 
@@ -460,7 +503,7 @@ func (g *GameSpySession) performLoginWithDatabase(userId uint64, gsbrCode string
 		ipAddress = ipAddress[:strings.Index(ipAddress, ":")]
 	}
 
-	user, err := database.LoginUserToGPCM(pool, ctx, userId, gsbrCode, profileId, defaultKey, deviceId, ipAddress, g.InGameName, deviceAuth)
+	user, err := db.LoginUserToGPCM(userId, gsbrCode, profileId, defaultKey, deviceId, ipAddress, g.InGameName, deviceAuth)
 	g.User = user
 
 	if err != nil {
